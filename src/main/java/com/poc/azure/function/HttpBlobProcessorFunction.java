@@ -4,12 +4,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.azure.functions.*;
 import com.microsoft.azure.functions.annotation.*;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.specialized.BlockBlobClient;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 
 /**
@@ -17,47 +19,61 @@ import java.util.*;
  */
 public class HttpBlobProcessorFunction {
 
-    private static final String BLOB_URL = "https://pocstblob.blob.core.windows.net/poc-json-file/trigger-file/sample-trigger-file.json?sp=r&st=2025-07-09T10:39:20Z&se=2025-12-31T22:59:59Z&spr=https&sv=2024-11-04&sr=b&sig=hApfwPsJAGIXPeaVhZS7e%2F4ZN8ZJH18LnyT5aN1Rljo%3D";
-    private static final String POST_URL = "https://webhook.site/50b2aa03-7eaa-4618-ad4c-8e7dc94d2f6c";
+    private static final String BLOB_URL = System.getenv("BLOB_URL");
+    private static final String POST_URL = System.getenv("POST_URL");
+    private static final String AZURE_CONNECTION_STRING = System.getenv("AZURE_STORAGE_CONNECTION_STRING");
+    private static final String CONTAINER_NAME = System.getenv("BLOB_CONTAINER_NAME");
+    private static final String BLOB_NAME = System.getenv("BLOB_NAME");
 
     @FunctionName("processBlobHttpTrigger")
     public HttpResponseMessage run(
-        @HttpTrigger(
-            name = "req",
-            methods = {HttpMethod.GET, HttpMethod.POST},
-            authLevel = AuthorizationLevel.ANONYMOUS)
-        HttpRequestMessage<Optional<String>> request,
-        final ExecutionContext context) {
+            @HttpTrigger(name = "req", methods = { HttpMethod.GET, HttpMethod.POST },
+                    authLevel = AuthorizationLevel.ANONYMOUS)
+            HttpRequestMessage<Optional<String>> request,
+            final ExecutionContext context) {
 
         context.getLogger().info("HTTP trigger received a request to process blob JSON.");
 
         try {
-            // 1. Read blob
-            String json = readBlobJson(BLOB_URL);
+            // Step 1: Read the JSON from Blob
+            String json = readBlobJson(BLOB_URL, context);
 
-            // 2. Execute trasformation
-            List<Map<String, Object>> simplifiedData = transformJson(json);
+            if (json == null || json.trim().isEmpty() || json.trim().equals("[]")) {
+                context.getLogger().info("Blob is empty, execution skipped.");
+                return request.createResponseBuilder(HttpStatus.OK)
+                        .body("Blob is empty, execution skipped.")
+                        .build();
+            }
 
-            // 3. Send webhook
-            sendToEndpoint(simplifiedData);
+            // Step 2: Transform
+            List<Map<String, Object>> simplifiedData = transformJson(json, context);
 
-            return request
-                .createResponseBuilder(HttpStatus.OK)
-                .body("Blob JSON processed and sent successfully.")
-                .build();
+            // Step 3: Send to endpoint
+            sendToEndpoint(simplifiedData, context);
+
+            // Step 4: Delete the blob
+            deleteBlobUsingSdk(context);
+
+            context.getLogger().info("Data successfully sent and blob deleted.");
+            return request.createResponseBuilder(HttpStatus.OK)
+                    .body("Data successfully sent and blob deleted.")
+                    .build();
 
         } catch (Exception e) {
-            context.getLogger().severe("Errore: " + e.getMessage());
-            return request
-                .createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Errore durante l’elaborazione: " + e.getMessage())
-                .build();
+            context.getLogger().severe("Errore durante l’elaborazione: " + e.getMessage());
+            return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Errore durante l’elaborazione: " + e.getMessage())
+                    .build();
         }
     }
 
-    private String readBlobJson(String url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+    private String readBlobJson(String blobUrl, ExecutionContext context) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(blobUrl).openConnection();
         conn.setRequestMethod("GET");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+
+        context.getLogger().info("Reading JSON from Blob...");
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
@@ -70,7 +86,8 @@ public class HttpBlobProcessorFunction {
         }
     }
 
-    private List<Map<String, Object>> transformJson(String json) throws Exception {
+    private List<Map<String, Object>> transformJson(String json, ExecutionContext context) throws IOException {
+        context.getLogger().info("Transforming JSON...");
         ObjectMapper mapper = new ObjectMapper();
 
         List<Map<String, Object>> original = mapper.readValue(json, new TypeReference<>() {});
@@ -84,22 +101,45 @@ public class HttpBlobProcessorFunction {
                 .toList();
     }
 
-    private void sendToEndpoint(List<Map<String, Object>> data) throws Exception {
+    private void sendToEndpoint(List<Map<String, Object>> data, ExecutionContext context) throws IOException {
+        context.getLogger().info("Sending data to webhook...");
+
         ObjectMapper mapper = new ObjectMapper();
         String json = mapper.writeValueAsString(data);
 
         HttpURLConnection conn = (HttpURLConnection) new URL(POST_URL).openConnection();
         conn.setRequestMethod("POST");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        try (var os = conn.getOutputStream()) {
+        try (OutputStream os = conn.getOutputStream()) {
             os.write(json.getBytes(StandardCharsets.UTF_8));
         }
 
         int responseCode = conn.getResponseCode();
         if (responseCode >= 400) {
-            throw new RuntimeException("POST failed with code: " + responseCode);
+            throw new IOException("POST failed with HTTP code: " + responseCode);
+        }
+
+        context.getLogger().info("Webhook POST completed successfully.");
+    }
+
+    private void deleteBlobUsingSdk(ExecutionContext context) {
+        context.getLogger().info("Deleting blob using Azure SDK...");
+
+        BlobClient blobClient = new BlobClientBuilder()
+                .connectionString(AZURE_CONNECTION_STRING)
+                .containerName(CONTAINER_NAME)
+                .blobName(BLOB_NAME)
+                .buildClient();
+
+        if (blobClient.exists()) {
+            blobClient.delete();
+            context.getLogger().info("Blob deleted successfully.");
+        } else {
+            context.getLogger().warning("Blob not found, skipping delete.");
         }
     }
 }

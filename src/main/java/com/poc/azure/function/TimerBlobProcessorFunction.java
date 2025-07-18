@@ -5,19 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.azure.functions.*;
 import com.microsoft.azure.functions.annotation.*;
 import com.azure.storage.blob.*;
-import com.azure.storage.blob.specialized.BlockBlobClient;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.*;
 
-/**
- * Azure Function that processes a JSON file from Blob Storage on HTTP trigger.
- */
-public class HttpBlobProcessorFunction {
+public class TimerBlobProcessorFunction {
 
     private static final String BLOB_URL = System.getenv("BLOB_URL");
     private static final String POST_URL = System.getenv("POST_URL");
@@ -25,11 +20,9 @@ public class HttpBlobProcessorFunction {
     private static final String CONTAINER_NAME = System.getenv("BLOB_CONTAINER_NAME");
     private static final String BLOB_NAME = System.getenv("BLOB_NAME");
 
-    @FunctionName("processBlobHttpTrigger")
-    public HttpResponseMessage run(
-            @HttpTrigger(name = "req", methods = { HttpMethod.GET, HttpMethod.POST },
-                    authLevel = AuthorizationLevel.ANONYMOUS)
-            HttpRequestMessage<Optional<String>> request,
+    @FunctionName("processBlobTimerTrigger")
+    public void run(
+            @TimerTrigger(name = "timerInfo", schedule = "0 */1 * * * *") String timerInfo,
             final ExecutionContext context) {
 
         context.getLogger().info("HTTP trigger received a request to process blob JSON.");
@@ -40,9 +33,7 @@ public class HttpBlobProcessorFunction {
 
             if (json == null || json.trim().isEmpty() || json.trim().equals("[]")) {
                 context.getLogger().info("Blob is empty, execution skipped.");
-                return request.createResponseBuilder(HttpStatus.OK)
-                        .body("Blob is empty, execution skipped.")
-                        .build();
+                return;
             }
 
             // Step 2: Transform
@@ -55,15 +46,11 @@ public class HttpBlobProcessorFunction {
             deleteBlobUsingSdk(context);
 
             context.getLogger().info("Data successfully sent and blob deleted.");
-            return request.createResponseBuilder(HttpStatus.OK)
-                    .body("Data successfully sent and blob deleted.")
-                    .build();
+            return;
 
         } catch (Exception e) {
             context.getLogger().severe("Errore durante l’elaborazione: " + e.getMessage());
-            return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Errore durante l’elaborazione: " + e.getMessage())
-                    .build();
+            return;
         }
     }
 
@@ -90,14 +77,14 @@ public class HttpBlobProcessorFunction {
         context.getLogger().info("Transforming JSON...");
         ObjectMapper mapper = new ObjectMapper();
 
-        List<Map<String, Object>> original = mapper.readValue(json, new TypeReference<>() {});
+        List<Map<String, Object>> original = mapper.readValue(json, new TypeReference<>() {
+        });
         return original.stream()
                 .map(item -> Map.of(
                         "orderId", item.get("orderId"),
                         "customerId", item.get("customerId"),
                         "totalAmount", item.get("totalAmount"),
-                        "status", item.get("status")
-                ))
+                        "status", item.get("status")))
                 .toList();
     }
 

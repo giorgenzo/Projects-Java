@@ -14,7 +14,6 @@ import java.util.*;
 
 public class TimerBlobProcessorFunction {
 
-    private static final String BLOB_URL = System.getenv("BLOB_URL");
     private static final String POST_URL = System.getenv("POST_URL");
     private static final String AZURE_CONNECTION_STRING = System.getenv("AZURE_STORAGE_CONNECTION_STRING");
     private static final String CONTAINER_NAME = System.getenv("BLOB_CONTAINER_NAME");
@@ -29,7 +28,7 @@ public class TimerBlobProcessorFunction {
 
         try {
             // Step 1: Read the JSON from Blob
-            String json = readBlobJson(BLOB_URL, context);
+            String json = readBlobJsonFromSdk(context);
 
             if (json == null || json.trim().isEmpty() || json.trim().equals("[]")) {
                 context.getLogger().info("Blob is empty, execution skipped.");
@@ -54,27 +53,30 @@ public class TimerBlobProcessorFunction {
         }
     }
 
-    private String readBlobJson(String blobUrl, ExecutionContext context) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(blobUrl).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
+    private String readBlobJsonFromSdk(ExecutionContext context) throws IOException {
 
-        context.getLogger().info("Reading JSON from Blob...");
+        context.getLogger().info("Reading JSON from Blob using Azure SDK...");
 
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder result = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                result.append(line);
-            }
-            return result.toString();
+        BlobClient blobClient = new BlobClientBuilder()
+                .connectionString(AZURE_CONNECTION_STRING)
+                .containerName(CONTAINER_NAME)
+                .blobName(BLOB_NAME)
+                .buildClient();
+
+        if (!blobClient.exists()) {
+            throw new FileNotFoundException("Blob not found: " + BLOB_NAME);
         }
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        blobClient.downloadStream(outputStream);
+
+        return outputStream.toString(StandardCharsets.UTF_8);
     }
 
     private List<Map<String, Object>> transformJson(String json, ExecutionContext context) throws IOException {
+
         context.getLogger().info("Transforming JSON...");
+
         ObjectMapper mapper = new ObjectMapper();
 
         List<Map<String, Object>> original = mapper.readValue(json, new TypeReference<>() {
@@ -89,6 +91,7 @@ public class TimerBlobProcessorFunction {
     }
 
     private void sendToEndpoint(List<Map<String, Object>> data, ExecutionContext context) throws IOException {
+
         context.getLogger().info("Sending data to webhook...");
 
         ObjectMapper mapper = new ObjectMapper();
@@ -114,6 +117,7 @@ public class TimerBlobProcessorFunction {
     }
 
     private void deleteBlobUsingSdk(ExecutionContext context) {
+
         context.getLogger().info("Deleting blob using Azure SDK...");
 
         BlobClient blobClient = new BlobClientBuilder()

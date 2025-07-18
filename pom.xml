@@ -98,7 +98,6 @@
                             <value>~4</value>
                         </property>
                     </appSettings>
-                    <functionsPackage>com.poc.azure.function</functionsPackage>
                 </configuration>
                 <executions>
                     <execution>

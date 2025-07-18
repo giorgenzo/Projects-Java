@@ -1,5 +1,4 @@
-/*
-package com.poc.azure.function;
+/*package com.poc.azure.function;
 
 import com.microsoft.azure.functions.*;
 import org.mockito.invocation.InvocationOnMock;

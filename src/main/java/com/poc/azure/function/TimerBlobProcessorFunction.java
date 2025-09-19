@@ -12,7 +12,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public class TimerBlobProcessorFunction {
+public class TimerBlobProcessorFunction { 
 
     private static final String POST_URL = System.getenv("POST_URL");
     private static final String AZURE_CONNECTION_STRING = System.getenv("AZURE_STORAGE_CONNECTION_STRING");

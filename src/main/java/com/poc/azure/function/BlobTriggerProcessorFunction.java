@@ -12,28 +12,27 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public class TimerBlobProcessorFunction { 
+public class BlobTriggerProcessorFunction {
 
     private static final String POST_URL = System.getenv("POST_URL");
     private static final String AZURE_CONNECTION_STRING = System.getenv("AZURE_STORAGE_CONNECTION_STRING");
-    private static final String CONTAINER_NAME = System.getenv("BLOB_CONTAINER_NAME");
-    private static final String BLOB_NAME = System.getenv("BLOB_NAME");
 
-    @FunctionName("processBlobTimerTrigger")
+    @FunctionName("processBlobTrigger")
     public void run(
-            @TimerTrigger(name = "timerInfo", schedule = "0 */1 * * * *") String timerInfo,
+            @BlobTrigger(name = "inputBlob", path = "%BLOB_CONTAINER_NAME%/{name}", dataType = "binary", connection = "AZURE_STORAGE_CONNECTION_STRING") byte[] content,
+            @BindingName("name") String blobName,
             final ExecutionContext context) {
 
-        context.getLogger().info("HTTP trigger received a request to process blob JSON.");
+        context.getLogger().info("Blob trigger received: " + blobName);
 
         try {
-            // Step 1: Read the JSON from Blob
-            String json = readBlobJsonFromSdk(context);
-
-            if (json == null || json.trim().isEmpty() || json.trim().equals("[]")) {
+            if (content == null || content.length == 0) {
                 context.getLogger().info("Blob is empty, execution skipped.");
                 return;
             }
+
+            // Step 1: Convert blob content to string
+            String json = new String(content, StandardCharsets.UTF_8);
 
             // Step 2: Transform
             List<Map<String, Object>> simplifiedData = transformJson(json, context);
@@ -41,36 +40,14 @@ public class TimerBlobProcessorFunction {
             // Step 3: Send to endpoint
             sendToEndpoint(simplifiedData, context);
 
-            // Step 4: Delete the blob
-            deleteBlobUsingSdk(context);
+            // Step 4: Delete the blob using SDK
+            deleteBlob(blobName, context);
 
             context.getLogger().info("Data successfully sent and blob deleted.");
-            return;
 
         } catch (Exception e) {
             context.getLogger().severe("Errore durante l’elaborazione: " + e.getMessage());
-            return;
         }
-    }
-
-    private String readBlobJsonFromSdk(ExecutionContext context) throws IOException {
-
-        context.getLogger().info("Reading JSON from Blob using Azure SDK...");
-
-        BlobClient blobClient = new BlobClientBuilder()
-                .connectionString(AZURE_CONNECTION_STRING)
-                .containerName(CONTAINER_NAME)
-                .blobName(BLOB_NAME)
-                .buildClient();
-
-        if (!blobClient.exists()) {
-            throw new FileNotFoundException("Blob not found: " + BLOB_NAME);
-        }
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        blobClient.downloadStream(outputStream);
-
-        return outputStream.toString(StandardCharsets.UTF_8);
     }
 
     private List<Map<String, Object>> transformJson(String json, ExecutionContext context) throws IOException {
@@ -95,6 +72,7 @@ public class TimerBlobProcessorFunction {
         context.getLogger().info("Sending data to webhook...");
 
         ObjectMapper mapper = new ObjectMapper();
+
         String json = mapper.writeValueAsString(data);
 
         HttpURLConnection conn = (HttpURLConnection) new URL(POST_URL).openConnection();
@@ -116,14 +94,14 @@ public class TimerBlobProcessorFunction {
         context.getLogger().info("Webhook POST completed successfully.");
     }
 
-    private void deleteBlobUsingSdk(ExecutionContext context) {
+    private void deleteBlob(String blobName, ExecutionContext context) {
 
         context.getLogger().info("Deleting blob using Azure SDK...");
-
+        
         BlobClient blobClient = new BlobClientBuilder()
                 .connectionString(AZURE_CONNECTION_STRING)
-                .containerName(CONTAINER_NAME)
-                .blobName(BLOB_NAME)
+                .containerName(System.getenv("BLOB_CONTAINER_NAME"))
+                .blobName(blobName)
                 .buildClient();
 
         if (blobClient.exists()) {

@@ -40,13 +40,13 @@ public class BlobTriggerProcessorFunction {
             // Step 3: Send to endpoint
             sendToEndpoint(simplifiedData, context);
 
-            // Step 4: Delete the blob using SDK
+            // Step 4: Delete blob
             deleteBlob(blobName, context);
 
             context.getLogger().info("Data successfully sent and blob deleted.");
 
         } catch (Exception e) {
-            context.getLogger().severe("Errore durante l’elaborazione: " + e.getMessage());
+            context.getLogger().severe("Error: " + e.getMessage());
         }
     }
 
@@ -96,7 +96,7 @@ public class BlobTriggerProcessorFunction {
 
     private void deleteBlob(String blobName, ExecutionContext context) {
 
-        context.getLogger().info("Deleting blob using Azure SDK...");
+        context.getLogger().info("Deleting blob");
         
         BlobClient blobClient = new BlobClientBuilder()
                 .connectionString(AZURE_CONNECTION_STRING)

@@ -28,7 +28,7 @@ public class TimerTriggerProcessorFunction {
 
         try {
             // Step 1: Read the JSON from Blob
-            String json = readBlobJsonFromSdk(context);
+            String json = readBlobJson(context);
 
             if (json == null || json.trim().isEmpty() || json.trim().equals("[]")) {
                 context.getLogger().info("Blob is empty, execution skipped.");
@@ -41,21 +41,21 @@ public class TimerTriggerProcessorFunction {
             // Step 3: Send to endpoint
             sendToEndpoint(simplifiedData, context);
 
-            // Step 4: Delete the blob
-            deleteBlobUsingSdk(context);
+            // Step 4: Delete blob
+            deleteBlob(context);
 
             context.getLogger().info("Data successfully sent and blob deleted.");
             return;
 
         } catch (Exception e) {
-            context.getLogger().severe("Errore durante l’elaborazione: " + e.getMessage());
+            context.getLogger().severe("Error: " + e.getMessage());
             return;
         }
     }
 
-    private String readBlobJsonFromSdk(ExecutionContext context) throws IOException {
+    private String readBlobJson(ExecutionContext context) throws IOException {
 
-        context.getLogger().info("Reading JSON from Blob using Azure SDK...");
+        context.getLogger().info("Reading JSON from Blob");
 
         BlobClient blobClient = new BlobClientBuilder()
                 .connectionString(AZURE_CONNECTION_STRING)
@@ -116,9 +116,9 @@ public class TimerTriggerProcessorFunction {
         context.getLogger().info("Webhook POST completed successfully.");
     }
 
-    private void deleteBlobUsingSdk(ExecutionContext context) {
+    private void deleteBlob(ExecutionContext context) {
 
-        context.getLogger().info("Deleting blob using Azure SDK...");
+        context.getLogger().info("Deleting blob");
 
         BlobClient blobClient = new BlobClientBuilder()
                 .connectionString(AZURE_CONNECTION_STRING)

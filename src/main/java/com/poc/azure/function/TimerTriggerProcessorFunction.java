@@ -21,7 +21,7 @@ public class TimerTriggerProcessorFunction {
 
     @FunctionName("processTimerTrigger")
     public void run(
-            @TimerTrigger(name = "timerInfo", schedule = "0 */1 * * * *") String timerInfo,
+            @TimerTrigger(name = "timerInfo", schedule = "0 */10 * * * *") String timerInfo,
             final ExecutionContext context) {
 
         context.getLogger().info("HTTP trigger received a request to process blob JSON.");

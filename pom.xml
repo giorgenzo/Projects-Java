@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.poc.azure.function</groupId>
-    <artifactId>blob-http-function</artifactId>
+    <artifactId>poc-reply-azure-function</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
@@ -17,7 +17,7 @@
         <java.version>17</java.version>
         <azure.functions.maven.plugin.version>1.37.0</azure.functions.maven.plugin.version>
         <azure.functions.java.library.version>3.1.0</azure.functions.java.library.version>
-        <functionAppName>blob-http-function</functionAppName>
+        <functionAppName>poc-reply-azure-function</functionAppName>
     </properties>
 
     <dependencies>
@@ -85,9 +85,9 @@
                 <version>${azure.functions.maven.plugin.version}</version>
                 <configuration>
                     <appName>${functionAppName}</appName>
-                    <resourceGroup>java-functions-group</resourceGroup>
-                    <region>westeurope</region>
-                    <appServicePlanName>java-functions-plan</appServicePlanName>
+                    <resourceGroup>PoC_Reply</resourceGroup>
+                    <region>Italy North </region>
+                    <appServicePlanName>ASP-PoCReply-9630</appServicePlanName>
                     <runtime>
                         <os>windows</os>
                         <javaVersion>17</javaVersion>
